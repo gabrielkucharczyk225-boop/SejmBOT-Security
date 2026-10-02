@@ -1,34 +1,36 @@
-const { Events, EmbedBuilder } = require('discord.js');
+const { Events } = require('discord.js');
 const { FORBIDDEN_NAMES, NEW_ACCOUNT_DAYS } = require('../config');
-const { sendWebhook } = require('../utils/webhook');
+const { log } = require('../utils/logger');
+const { baseEmbed } = require('../utils/embeds');
 const { registerJoin } = require('../utils/raid');
 
 module.exports = {
   name: Events.GuildMemberAdd,
   async execute(member) {
-    // 1. Anti-Spike
-    await registerJoin();
+    await registerJoin(member.guild);
 
-    // 2. Ochrona nicków
     const username = member.user.username.toLowerCase();
     if (FORBIDDEN_NAMES.some((bad) => username.includes(bad))) {
       try {
-        await member.kick('Podejrzany nick');
+        await member.kick('Podejrzany nick (SejmBOT Security)');
+        await log(member.guild, 'security', baseEmbed('security', '🚫 Zablokowano podejrzanego użytkownika')
+          .setDescription(`${member.user.tag} (\`${member.id}\`) został wyrzucony za podejrzany nick.`));
       } catch (err) {
-        console.error('Nie udało się wyrzucić użytkownika:', err);
+        console.error('Nie udało się wyrzucić użytkownika:', err.message);
       }
       return;
     }
 
-    // 3. Log + wiek konta
     const ageDays = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
-    const embed = new EmbedBuilder()
-      .setTitle('👤 Nowy użytkownik')
-      .setColor(ageDays < NEW_ACCOUNT_DAYS ? 0xed4245 : 0x3498db)
+    const embed = baseEmbed('members', '👤 Nowy użytkownik dołączył')
+      .setThumbnail(member.user.displayAvatarURL())
       .addFields(
-        { name: 'Użytkownik', value: `${member}`, inline: true },
-        { name: 'Wiek konta', value: `${ageDays} dni`, inline: true }
+        { name: 'Użytkownik', value: `${member} (\`${member.id}\`)`, inline: true },
+        { name: 'Konto założone', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:F>`, inline: true },
+        { name: 'Wiek konta', value: `${ageDays} dni${ageDays < NEW_ACCOUNT_DAYS ? ' ⚠️ bardzo nowe konto!' : ''}`, inline: true },
+        { name: 'Liczba członków', value: String(member.guild.memberCount), inline: true }
       );
-    await sendWebhook(embed);
+    if (ageDays < NEW_ACCOUNT_DAYS) embed.setColor(0xe74c3c);
+    await log(member.guild, 'members', embed);
   },
 };
