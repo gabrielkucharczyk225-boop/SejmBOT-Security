@@ -5,6 +5,19 @@ const storage = require('./src/storage');
 const loadEvents = require('./src/handlers/eventHandler');
 const loadCommands = require('./src/handlers/commandHandler');
 
+// --- Uruchomienie serwera HTTP dla UptimeRobot / Render ---
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('SejmBOT Security działa!');
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[HTTP] Serwer Web uruchomiony na porcie ${PORT}`);
+});
+// --------------------------------------------------------
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -22,10 +35,6 @@ const client = new Client({
 
 loadCommands(client);
 loadEvents(client);
-
-if (process.env.PORT) {
-  http.createServer((req, res) => { res.writeHead(200); res.end('SejmBOT Security działa'); }).listen(process.env.PORT);
-}
 
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
