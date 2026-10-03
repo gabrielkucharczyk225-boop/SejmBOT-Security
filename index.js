@@ -6,13 +6,15 @@ const loadEvents = require('./src/handlers/eventHandler');
 const loadCommands = require('./src/handlers/commandHandler');
 
 // --- Uruchomienie serwera HTTP dla UptimeRobot / Render ---
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 const server = http.createServer((req, res) => {
+  // Odpowiedź na każdy request GET (np. od UptimeRobot)
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('SejmBOT Security działa!');
 });
 
+// Nasłuchiwanie na porcie przypisanym przez Render
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[HTTP] Serwer Web uruchomiony na porcie ${PORT}`);
 });
@@ -33,13 +35,22 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
-loadCommands(client);
-loadEvents(client);
-
+// Obsługa błędów, aby proces się nie wykradał
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 
-(async () => {
-  await storage.init();
-  await client.login(process.env.TOKEN);
-})();
+// Uruchomienie bota i ładowanie modułów
+async function main() {
+  try {
+    loadCommands(client);
+    loadEvents(client);
+
+    await storage.init();
+    await client.login(process.env.TOKEN);
+    console.log('[BOT] Zalogowano pomyślnie!');
+  } catch (error) {
+    console.error('[ERR] Błąd podczas uruchamiania bota:', error);
+  }
+}
+
+main();
