@@ -60,6 +60,7 @@ class MongoAdapter {
 // nie trzeba pamiętać jego ID nigdzie indziej.
 const MARKER_RE = /^#SEJMBOT#([^#\n]+)#([^#\n]+)#/;
 const PIN_MARKER = '#SEJMBOT_DATA_CHANNEL# (nie usuwaj tej wiadomości - bot przechowuje tu swoje dane)';
+const { markExpected } = require('./utils/selfDeleteTracker');
 
 class ChannelAdapter {
   constructor(client, channelId) {
@@ -79,7 +80,7 @@ class ChannelAdapter {
     const channel = await this.getChannel();
     const index = new Map();
     let before;
-    for (let page = 0; page < 30; page++) {
+    for (let page = 0; page < 30; page++) { // bezpiecznik: max 3000 wiadomości przeszukanych
       const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
       if (!batch.size) break;
       for (const msg of batch.values()) {
@@ -118,7 +119,10 @@ class ChannelAdapter {
     const channel = await this.getChannel();
 
     const oldId = index.get(key);
-    if (oldId) await channel.messages.delete(oldId).catch(() => {});
+    if (oldId) {
+      markExpected(oldId); // to usunięcie jest zaplanowane przez nas samych - nie alarmuj
+      await channel.messages.delete(oldId).catch(() => {});
+    }
 
     const marker = `#SEJMBOT#${col}#${id}#`;
     const safeName = `${col}-${String(id).replace(/[:]/g, '_')}`;
@@ -143,6 +147,7 @@ class ChannelAdapter {
     const key = `${col}:${id}`;
     const msgId = index.get(key);
     if (!msgId) return;
+    markExpected(msgId); // to usunięcie jest zaplanowane przez nas samych - nie alarmuj
     const channel = await this.getChannel();
     await channel.messages.delete(msgId).catch(() => {});
     index.delete(key);
@@ -173,6 +178,7 @@ function modeFor(guildId) {
   return channelAdapters.has(guildId) ? 'channel' : mode;
 }
 
+// Podłącza kanał Discorda jako magazyn danych dla danego serwera (idempotentne).
 function attachChannelAdapter(guildId, channelId) {
   if (!discordClient) throw new Error('Klient Discorda nie jest jeszcze gotowy.');
   channelAdapters.set(guildId, new ChannelAdapter(discordClient, channelId));
@@ -217,6 +223,7 @@ const defaults = () => ({
   protectAllChannels: false,
   ignorePrefixes: ['ticket'],
   linkWhitelist: { roles: [], channels: [] },
+  protectedBots: [], // [{ botId, botTag, channelId }] - kanały logów innych botów chronione przez /chron-bota
 });
 const cfgCache = new Map();
 
@@ -251,7 +258,7 @@ async function saveBackup(guildId, snapshot, meta) {
   const a = resolveAdapter(guildId);
   const ts = Date.now();
   const id = `${guildId}:${pad(ts)}`;
-  const data = zlib.gzipSync(Buffer.from(JSON.stringify(snapshot)));
+  const data = zlib.gzipSync(Buffer.from(JSON.stringify(snapshot))); // surowy Buffer - bez base64
   await a.put('backups', id, data);
   await a.put('backupmeta', id, { ...meta, ts, id, bytes: data.length });
   const ids = await a.keys('backupmeta', guildId + ':');
@@ -273,7 +280,7 @@ async function loadBackup(id) {
   const a = resolveAdapter(guildId);
   const data = await a.get('backups', id);
   if (!data) return null;
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'base64');
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'base64'); // kompatybilność wstecz
   return JSON.parse(zlib.gunzipSync(buf).toString());
 }
 
