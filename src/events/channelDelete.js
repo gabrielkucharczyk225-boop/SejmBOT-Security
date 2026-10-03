@@ -13,7 +13,11 @@ module.exports = {
     const guild = channel.guild;
     const entry = await findExecutor(guild, AuditLogEvent.ChannelDelete, (e) => e.target?.id === channel.id);
     const cfg = await storage.getConfig(guild.id);
-    const isProtected = Object.values(cfg.routes).includes(channel.id) || cfg.protectedChannels.includes(channel.id);
+
+    const nameLower = (channel.name || '').toLowerCase();
+    const isIgnored = (cfg.ignorePrefixes || []).some((p) => nameLower.startsWith(p.toLowerCase()));
+    const isLogChannel = Object.values(cfg.routes).includes(channel.id) || cfg.protectedChannels.includes(channel.id);
+    const isProtected = !isIgnored && (isLogChannel || cfg.protectAllChannels);
 
     if (channel.type !== ChannelType.GuildCategory) {
       await log(guild, 'channels', baseEmbed('channels', '🗑️ Usunięto kanał')
@@ -24,40 +28,42 @@ module.exports = {
         ));
     }
 
-    if (isProtected) {
-      let restoredId = null;
-      try {
-        const restored = await restoreSingleChannel(guild, channel);
-        restoredId = restored.id;
-        for (const cat of Object.keys(cfg.routes)) {
-          if (cfg.routes[cat] === channel.id) cfg.routes[cat] = restored.id;
-        }
-        if (cfg.protectedChannels.includes(channel.id)) {
-          cfg.protectedChannels = cfg.protectedChannels.filter((id) => id !== channel.id).concat(restored.id);
-        }
-        await storage.saveConfig(guild.id, cfg);
-      } catch (err) {
-        console.error('[protection] nie udało się odtworzyć kanału z logami:', err.message);
-      }
-
-      const alertEmbed = baseEmbed('security', '🚨 PRÓBA USUNIĘCIA KANAŁU Z LOGAMI')
-        .setDescription(
-          `Kanał **#${channel.name}** (chroniony) został usunięty!\n` +
-            `${restoredId ? `✅ Kanał został automatycznie odtworzony: <#${restoredId}>` : '❌ Nie udało się automatycznie odtworzyć kanału - sprawdź uprawnienia bota!'}`
-        )
-        .addFields({ name: 'Wykonał', value: executorTag(entry) });
-      const sent = await log(guild, 'security', alertEmbed);
-      if (!sent) {
-        const target = restoredId ? guild.channels.cache.get(restoredId) : null;
-        if (target) await target.send({ embeds: [alertEmbed] }).catch(() => {});
-        else {
-          const owner = await guild.fetchOwner().catch(() => null);
-          if (owner) await owner.send({ embeds: [alertEmbed] }).catch(() => {});
-        }
-      }
+    if (!isProtected) {
+      scheduleBackup(guild, `usunięto kanał #${channel.name}`);
       return;
     }
 
-    scheduleBackup(guild, `usunięto kanał #${channel.name}`);
+    let restoredId = null;
+    try {
+      const restored = await restoreSingleChannel(guild, channel);
+      restoredId = restored.id;
+      for (const cat of Object.keys(cfg.routes)) {
+        if (cfg.routes[cat] === channel.id) cfg.routes[cat] = restored.id;
+      }
+      if (cfg.protectedChannels.includes(channel.id)) {
+        cfg.protectedChannels = cfg.protectedChannels.filter((id) => id !== channel.id).concat(restored.id);
+      }
+      await storage.saveConfig(guild.id, cfg);
+    } catch (err) {
+      console.error('[protection] nie udało się odtworzyć kanału:', err.message);
+    }
+
+    const title = isLogChannel ? '🚨 PRÓBA USUNIĘCIA KANAŁU Z LOGAMI' : '🛡️ Auto-przywrócono usunięty kanał';
+    const alertEmbed = baseEmbed('security', title)
+      .setDescription(
+        `Kanał **#${channel.name}** (chroniony) został usunięty!\n` +
+          `${restoredId ? `✅ Kanał został automatycznie odtworzony: <#${restoredId}>` : '❌ Nie udało się automatycznie odtworzyć kanału - sprawdź uprawnienia bota!'}`
+      )
+      .addFields({ name: 'Wykonał', value: executorTag(entry) });
+
+    const sent = await log(guild, 'security', alertEmbed);
+    if (!sent) {
+      const target = restoredId ? guild.channels.cache.get(restoredId) : null;
+      if (target) await target.send({ embeds: [alertEmbed] }).catch(() => {});
+      else {
+        const owner = await guild.fetchOwner().catch(() => null);
+        if (owner) await owner.send({ embeds: [alertEmbed] }).catch(() => {});
+      }
+    }
   },
 };
