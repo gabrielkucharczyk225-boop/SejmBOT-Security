@@ -6,6 +6,8 @@ const { restoreSingleChannel } = require('../utils/restore');
 const { scheduleBackup } = require('../utils/backup');
 const storage = require('../storage');
 
+const EVERYONE_PING = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
+
 module.exports = {
   name: Events.ChannelDelete,
   async execute(channel) {
@@ -17,6 +19,7 @@ module.exports = {
     const nameLower = (channel.name || '').toLowerCase();
     const isIgnored = (cfg.ignorePrefixes || []).some((p) => nameLower.startsWith(p.toLowerCase()));
     const isLogChannel = Object.values(cfg.routes).includes(channel.id) || cfg.protectedChannels.includes(channel.id);
+    const botEntry = (cfg.protectedBots || []).find((b) => b.channelId === channel.id);
     const isProtected = !isIgnored && (isLogChannel || cfg.protectAllChannels);
 
     if (channel.type !== ChannelType.GuildCategory) {
@@ -43,23 +46,33 @@ module.exports = {
       if (cfg.protectedChannels.includes(channel.id)) {
         cfg.protectedChannels = cfg.protectedChannels.filter((id) => id !== channel.id).concat(restored.id);
       }
+      if (botEntry) {
+        botEntry.channelId = restored.id;
+      }
       await storage.saveConfig(guild.id, cfg);
     } catch (err) {
       console.error('[protection] nie udało się odtworzyć kanału:', err.message);
     }
 
-    const title = isLogChannel ? '🚨 PRÓBA USUNIĘCIA KANAŁU Z LOGAMI' : '🛡️ Auto-przywrócono usunięty kanał';
+    let title;
+    if (botEntry) title = '🚨 USUNIĘTO CHRONIONY LOG BOTA';
+    else if (isLogChannel) title = '🚨 PRÓBA USUNIĘCIA KANAŁU Z LOGAMI';
+    else title = '🛡️ Auto-przywrócono usunięty kanał';
+
     const alertEmbed = baseEmbed('security', title)
       .setDescription(
         `Kanał **#${channel.name}** (chroniony) został usunięty!\n` +
           `${restoredId ? `✅ Kanał został automatycznie odtworzony: <#${restoredId}>` : '❌ Nie udało się automatycznie odtworzyć kanału - sprawdź uprawnienia bota!'}`
       )
-      .addFields({ name: 'Wykonał', value: executorTag(entry) });
+      .addFields({ name: 'Usunął', value: executorTag(entry) });
+    if (botEntry) {
+      alertEmbed.addFields({ name: 'Chroniony bot', value: `<@${botEntry.botId}> (${botEntry.botTag})` });
+    }
 
-    const sent = await log(guild, 'security', alertEmbed);
+    const sent = await log(guild, 'security', alertEmbed, EVERYONE_PING);
     if (!sent) {
       const target = restoredId ? guild.channels.cache.get(restoredId) : null;
-      if (target) await target.send({ embeds: [alertEmbed] }).catch(() => {});
+      if (target) await target.send({ embeds: [alertEmbed], ...EVERYONE_PING }).catch(() => {});
       else {
         const owner = await guild.fetchOwner().catch(() => null);
         if (owner) await owner.send({ embeds: [alertEmbed] }).catch(() => {});
