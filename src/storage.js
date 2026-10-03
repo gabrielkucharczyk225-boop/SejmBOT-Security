@@ -1,5 +1,32 @@
+// Warstwa zapisu danych: MongoDB (trwałe) albo pamięć (tylko do testów - znika po restarcie!).
+const fs = require('fs');
+const path = require('path');
 const zlib = require('zlib');
 const { BACKUP } = require('./config');
+
+// Lekki plik-cache TYLKO dla konfiguracji (kanały logów itd.) - mała ilość danych.
+// Chroni przed utratą ustawień przy zwykłym restarcie bota w trakcie tego samego deploya.
+// UWAGA: na Render dysk jest kasowany przy każdym REDEPLOYU - to nie zastępuje MongoDB,
+// tylko dodatkowo zabezpiecza przed np. crashem i auto-restartem przez Render bez redeployu.
+const CACHE_FILE = path.join(__dirname, '..', 'data', 'config-cache.json');
+
+function readCacheFile() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return {};
+    return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  } catch (err) {
+    console.error('[cache] nie udało się odczytać pliku cache:', err.message);
+    return {};
+  }
+}
+function writeCacheFile(all) {
+  try {
+    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(all, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[cache] nie udało się zapisać pliku cache:', err.message);
+  }
+}
 
 class MemoryAdapter {
   constructor() { this.cols = new Map(); }
@@ -31,29 +58,44 @@ class MongoAdapter {
 let adapter = new MemoryAdapter();
 let mode = 'memory';
 
+// ---------- Konfiguracja serwera ----------
+const defaults = () => ({
+  routes: {},                        // kategoria -> ID kanału logów
+  protectedChannels: [],             // dodatkowe kanały chronione (np. logi innego bota)
+  autoRestore: 'deletions',          // 'deletions' | 'off'
+  protectAllChannels: false,         // true = chroń (auto-odtwarzaj) WSZYSTKIE kanały, nie tylko logi
+  ignorePrefixes: ['ticket'],        // nazwy kanałów zaczynające się na te prefiksy - NIGDY nie są chronione/odtwarzane
+  linkWhitelist: { roles: [], channels: [] }, // role/kanały zwolnione z usuwania linków
+});
+const cfgCache = new Map();
+
 async function init() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.warn('⚠️  Brak MONGODB_URI - dane będą TYLKO w pamięci i znikną po restarcie!');
-    return;
+    console.warn('⚠️  Brak MONGODB_URI - backupy i assety będą TYLKO w pamięci i znikną po restarcie!');
+    console.warn('⚠️  Konfiguracja kanałów logów ma dodatkowo plik-cache na dysku, ale on też znika przy REDEPLOYU na Render.');
+  } else {
+    try {
+      const a = new MongoAdapter();
+      await a.init(uri);
+      adapter = a;
+      mode = 'mongo';
+      console.log('✅ Połączono z MongoDB - backupy i konfiguracja są trwałe.');
+    } catch (err) {
+      console.error('❌ Nie udało się połączyć z MongoDB, używam pamięci + pliku cache:', err.message);
+    }
   }
-  try {
-    const a = new MongoAdapter();
-    await a.init(uri);
-    adapter = a;
-    mode = 'mongo';
-    console.log('✅ Połączono z MongoDB');
-  } catch (err) {
-    console.error('❌ Nie udało się połączyć z MongoDB, używam pamięci:', err.message);
+
+  // Wczytaj konfigurację z pliku-cache na dysku do pamięci podręcznej.
+  // Działa jako dodatkowa siatka bezpieczeństwa, np. gdy Mongo akurat nie odpowiada przy starcie.
+  const cached = readCacheFile();
+  for (const [guildId, cfg] of Object.entries(cached)) {
+    if (!cfgCache.has(guildId)) cfgCache.set(guildId, { ...defaults(), ...cfg });
+  }
+  if (Object.keys(cached).length) {
+    console.log(`💾 Wczytano konfigurację logów z pliku-cache dla ${Object.keys(cached).length} serwera(ów).`);
   }
 }
-
-const defaults = () => ({
-  routes: {},
-  protectedChannels: [],
-  autoRestore: 'deletions',
-});
-const cfgCache = new Map();
 
 async function getConfig(guildId) {
   if (cfgCache.has(guildId)) return cfgCache.get(guildId);
@@ -62,45 +104,3 @@ async function getConfig(guildId) {
   cfgCache.set(guildId, cfg);
   return cfg;
 }
-async function saveConfig(guildId, cfg) {
-  cfgCache.set(guildId, cfg);
-  await adapter.put('config', guildId, cfg);
-}
-
-const pad = (n) => String(n).padStart(13, '0');
-
-async function saveBackup(guildId, snapshot, meta) {
-  const ts = Date.now();
-  const id = `${guildId}:${pad(ts)}`;
-  const data = zlib.gzipSync(Buffer.from(JSON.stringify(snapshot))).toString('base64');
-  await adapter.put('backups', id, data);
-  await adapter.put('backupmeta', id, { ...meta, ts, id, bytes: data.length });
-  const ids = await adapter.keys('backupmeta', guildId + ':');
-  for (const old of ids.slice(0, Math.max(0, ids.length - BACKUP.KEEP))) {
-    await adapter.remove('backups', old);
-    await adapter.remove('backupmeta', old);
-  }
-  return id;
-}
-async function listBackups(guildId) {
-  const ids = (await adapter.keys('backupmeta', guildId + ':')).reverse();
-  const out = [];
-  for (const id of ids) { const m = await adapter.get('backupmeta', id); if (m) out.push(m); }
-  return out;
-}
-async function loadBackup(id) {
-  const data = await adapter.get('backups', id);
-  if (!data) return null;
-  return JSON.parse(zlib.gunzipSync(Buffer.from(data, 'base64')).toString());
-}
-
-async function putAsset(key, buf) { await adapter.put('assets', key, buf.toString('base64')); }
-async function getAsset(key) {
-  const v = await adapter.get('assets', key);
-  return v ? Buffer.from(v, 'base64') : null;
-}
-
-module.exports = {
-  init, getConfig, saveConfig, saveBackup, listBackups, loadBackup, putAsset, getAsset,
-  get mode() { return mode; },
-};
