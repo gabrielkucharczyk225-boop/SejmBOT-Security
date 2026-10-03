@@ -9,13 +9,12 @@ async function fetchAsBase64(url) {
     const res = await fetch(url);
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    return buf;
+    return buf.toString('base64');
   } catch {
     return null;
   }
 }
 
-// Robi pełny zrzut struktury serwera: role, kanały, uprawnienia, ustawienia, emoji, naklejki, role członków.
 async function createBackup(guild, reason = 'manual') {
   await guild.fetch();
   const cfg = await storage.getConfig(guild.id);
@@ -24,7 +23,8 @@ async function createBackup(guild, reason = 'manual') {
 
   const roles = [];
   for (const role of guild.roles.cache.sort((a, b) => a.position - b.position).values()) {
-    if (role.managed) continue; // role botów/integracji - nie da się ich ręcznie odtworzyć
+    if (role.managed) continue;
+    const iconURL = role.iconURL({ extension: 'png', size: 256 });
     roles.push({
       id: role.id,
       name: role.name,
@@ -34,7 +34,7 @@ async function createBackup(guild, reason = 'manual') {
       permissions: role.permissions.bitfield.toString(),
       position: role.position,
       isEveryone: role.id === guild.id,
-      iconURL: role.iconURL({ extension: 'png', size: 256 }),
+      iconData: await fetchAsBase64(iconURL),
       unicodeEmoji: role.unicodeEmoji,
     });
   }
@@ -46,7 +46,7 @@ async function createBackup(guild, reason = 'manual') {
     return a.rawPosition - b.rawPosition;
   });
   for (const ch of sorted) {
-    if (isIgnoredChannel(ch.name)) continue; // np. kanały "ticket-*" - nie wchodzą do backupu
+    if (isIgnoredChannel(ch.name)) continue;
     channels.push({
       id: ch.id,
       type: ch.type,
@@ -73,14 +73,24 @@ async function createBackup(guild, reason = 'manual') {
     members.push({ userId: m.id, nick: m.nickname, roles: m.roles.cache.filter((r) => r.id !== guild.id).map((r) => r.id) });
   }
 
-  const emojis = guild.emojis.cache.map((e) => ({ id: e.id, name: e.name, animated: e.animated, url: e.imageURL({ extension: e.animated ? 'gif' : 'png' }) }));
-  const stickers = guild.stickers.cache.map((s) => ({ id: s.id, name: s.name, description: s.description, tags: s.tags, url: s.url }));
+  const emojis = [];
+  for (const e of guild.emojis.cache.values()) {
+    emojis.push({
+      id: e.id,
+      name: e.name,
+      animated: e.animated,
+      data: await fetchAsBase64(e.imageURL({ extension: e.animated ? 'gif' : 'png' })),
+    });
+  }
+  const stickers = [];
+  for (const s of guild.stickers.cache.values()) {
+    stickers.push({ id: s.id, name: s.name, description: s.description, tags: s.tags, data: await fetchAsBase64(s.url) });
+  }
 
   const snapshot = {
     guild: {
       name: guild.name,
-      iconURL: guild.iconURL({ extension: 'png', size: 512 }),
-      bannerURL: guild.bannerURL({ extension: 'png', size: 512 }),
+      iconData: await fetchAsBase64(guild.iconURL({ extension: 'png', size: 512 })),
       description: guild.description,
       verificationLevel: guild.verificationLevel,
       defaultMessageNotifications: guild.defaultMessageNotifications,
@@ -101,20 +111,8 @@ async function createBackup(guild, reason = 'manual') {
     counts: { roles: roles.length, channels: channels.length, members: members.length, emojis: emojis.length, stickers: stickers.length },
   });
 
-  // Zapisz assety (ikony/emoji/naklejki) osobno, dopiero po zapisaniu backupu - żeby nie tracić danych przy błędzie sieci.
-  for (const r of roles) {
-    if (r.iconURL) { const b = await fetchAsBase64(r.iconURL); if (b) await storage.putAsset(`${id}:role:${r.id}`, b); }
-  }
-  if (snapshot.guild.iconURL) { const b = await fetchAsBase64(snapshot.guild.iconURL); if (b) await storage.putAsset(`${id}:guildIcon`, b); }
-  for (const e of emojis) {
-    const b = await fetchAsBase64(e.url); if (b) await storage.putAsset(`${id}:emoji:${e.id}`, b);
-  }
-  for (const s of stickers) {
-    const b = await fetchAsBase64(s.url); if (b) await storage.putAsset(`${id}:sticker:${s.id}`, b);
-  }
-
   const embed = baseEmbed('backup', '💾 Utworzono backup serwera')
-    .setDescription(`Powód: **${reason}**`)
+    .setDescription(`Powód: **${reason}**\nBaza danych: **${storage.modeFor(guild.id) === 'channel' ? 'kanał Discorda' : storage.modeFor(guild.id) === 'mongo' ? 'MongoDB' : 'pamięć (nietrwałe!)'}**`)
     .addFields(
       { name: 'ID backupu', value: `\`${id.split(':')[1]}\``, inline: true },
       { name: 'Role', value: String(roles.length), inline: true },
@@ -128,7 +126,6 @@ async function createBackup(guild, reason = 'manual') {
   return id;
 }
 
-// ---------- Debounce - żeby nie robić backupu przy każdej pojedynczej zmianie z osobna ----------
 const { BACKUP } = require('../config');
 const timers = new Map();
 
