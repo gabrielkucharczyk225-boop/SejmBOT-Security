@@ -33,7 +33,8 @@ module.exports = {
           return `\`${b.id.split(':')[1]}\` — ${date} — ${b.reason}\n↳ role: ${b.counts.roles}, kanały: ${b.counts.channels}, emoji: ${b.counts.emojis}`;
         }).join('\n\n')
       );
-      embed.setFooter({ text: `Baza danych: ${storage.mode === 'mongo' ? 'MongoDB (trwałe)' : 'PAMIĘĆ (zniknie po restarcie!)'}` });
+           const modeLabel = storage.modeFor(interaction.guild.id) === 'channel' ? 'kanał Discorda (trwałe)' : storage.modeFor(interaction.guild.id) === 'mongo' ? 'MongoDB (trwałe)' : 'PAMIĘĆ (zniknie po restarcie!)';
+      embed.setFooter({ text: `Baza danych: ${modeLabel}` });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   },
