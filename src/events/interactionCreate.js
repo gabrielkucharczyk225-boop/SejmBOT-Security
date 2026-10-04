@@ -71,6 +71,34 @@ module.exports = {
         await interaction.update({ content: '⏳ Wykonuję działania...', components: [] });
         const result = await furyMode.applyPunishment(interaction.guild, targetUserId, punishment, interaction.user);
         await interaction.followUp({ content: result.ok ? `✅ ${result.message}` : `❌ ${result.message}`, ephemeral: true });
+        return;
+      }
+
+      if (interaction.customId.startsWith('multiacc:ban:')) {
+        if (!isAuthorized(interaction.member)) {
+          return interaction.reply({ content: '❌ Brak uprawnień.', ephemeral: true });
+        }
+        const parts = interaction.customId.split(':'); // multiacc, ban, yes|no, userId
+        const decision = parts[2];
+        const targetUserId = parts[3];
+
+        if (decision === 'no') {
+          await interaction.update({ content: '🚫 Odrzucono - SejmBOT Security nie podejmie działań wobec tej osoby.', components: [] });
+          return;
+        }
+
+        await interaction.update({ content: '⏳ Banuję...', components: [] });
+        try {
+          const member = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+          if (!member) {
+            await interaction.followUp({ content: '❌ Użytkownik nie jest już na serwerze.', ephemeral: true });
+            return;
+          }
+          await member.ban({ reason: `SejmBOT Security - potwierdzone multikonto przez ${interaction.user.tag}` });
+          await interaction.followUp({ content: `✅ Zbanowano ${member.user.tag}.`, ephemeral: true });
+        } catch (err) {
+          await interaction.followUp({ content: `❌ Nie udało się zbanować: ${err.message}`, ephemeral: true });
+        }
       }
     }
   },
