@@ -224,6 +224,7 @@ const defaults = () => ({
   ignorePrefixes: ['ticket'],
   linkWhitelist: { roles: [], channels: [] },
   protectedBots: [], // [{ botId, botTag, channelId }] - kanały logów innych botów chronione przez /chron-bota
+  furyBlockedBots: [], // ID botów blokowanych (zdjęcie ról) automatycznie w Trybie Furii
 });
 const cfgCache = new Map();
 
