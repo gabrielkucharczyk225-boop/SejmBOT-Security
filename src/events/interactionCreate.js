@@ -3,6 +3,7 @@ const { isAuthorized } = require('../utils/permissions');
 const { restoreServer } = require('../utils/restore');
 const { log } = require('../utils/logger');
 const { baseEmbed } = require('../utils/embeds');
+const furyMode = require('../utils/furyMode');
 
 module.exports = {
   name: Events.InteractionCreate,
@@ -40,7 +41,8 @@ module.exports = {
           const summary = baseEmbed('backup', '✅ Przywracanie serwera zakończone')
             .setDescription(
               result.errors.length
-                ? `Zakończono z ${result.errors.length} błędami:\n` + result.errors.slice(0, 10).map((e) => `• ${e}`).join('\n')
+                ? `Zakończono z ${result.errors.length} błędami (drobne elementy mogły się nie odtworzyć):\n` +
+                  result.errors.slice(0, 10).map((e) => `• ${e}`).join('\n')
                 : 'Wszystko odtworzone bez błędów.'
             );
           await log(interaction.guild, 'backup', summary);
@@ -49,6 +51,26 @@ module.exports = {
           console.error('[restore]', err);
           await interaction.followUp({ content: `❌ Przywracanie nie powiodło się: ${err.message}`, ephemeral: true });
         }
+        return;
+      }
+
+      if (interaction.customId.startsWith('fury:punish:')) {
+        if (!isAuthorized(interaction.member)) {
+          return interaction.reply({ content: '❌ Brak uprawnień.', ephemeral: true });
+        }
+        const parts = interaction.customId.split(':'); // fury, punish, yes|no, userId, [punishment]
+        const decision = parts[2];
+        const targetUserId = parts[3];
+
+        if (decision === 'no') {
+          await interaction.update({ content: '🚫 Odrzucono - SejmBOT Security nie podejmie działań wobec tej osoby.', components: [] });
+          return;
+        }
+
+        const punishment = parts[4];
+        await interaction.update({ content: '⏳ Wykonuję działania...', components: [] });
+        const result = await furyMode.applyPunishment(interaction.guild, targetUserId, punishment, interaction.user);
+        await interaction.followUp({ content: result.ok ? `✅ ${result.message}` : `❌ ${result.message}`, ephemeral: true });
       }
     }
   },
