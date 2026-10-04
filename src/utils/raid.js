@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const { RAID_JOIN_LIMIT, RAID_WINDOW_MS, RAID_ALERT_COOLDOWN_MS } = require('../config');
 const { log } = require('./logger');
 
-const joinTimestamps = new Map();
+const joinTimestamps = new Map(); // guildId -> [timestamps]
 const lastAlert = new Map();
 
 async function registerJoin(guild) {
@@ -23,4 +23,10 @@ async function registerJoin(guild) {
   }
 }
 
-module.exports = { registerJoin };
+function getRecentJoinCount(guildId) {
+  const now = Date.now();
+  const arr = (joinTimestamps.get(guildId) || []).filter((t) => now - t < RAID_WINDOW_MS);
+  return arr.length;
+}
+
+module.exports = { registerJoin, getRecentJoinCount };
