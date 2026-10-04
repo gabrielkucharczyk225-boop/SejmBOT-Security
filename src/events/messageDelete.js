@@ -4,22 +4,22 @@ const { baseEmbed, trim } = require('../utils/embeds');
 const { findExecutor, executorTag } = require('../utils/audit');
 const { consumeExpected } = require('../utils/selfDeleteTracker');
 const { createBackup } = require('../utils/backup');
+const protectedBotMessages = require('../utils/protectedBotMessages');
 const storage = require('../storage');
 
 const DATA_MARKER_RE = /^#SEJMBOT#([^#\n]+)#([^#\n]+)#/;
+const EVERYONE_PING = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
 
 module.exports = {
   name: Events.MessageDelete,
   async execute(message, client) {
     if (!message.guild) return;
 
-    // ---- Ochrona WŁASNYCH logów i danych bota ----
     if (message.author?.id === client.user.id) {
-      if (consumeExpected(message.id)) return; // zaplanowane, własne usunięcie (np. podmiana configu) - nic się nie stało
+      if (consumeExpected(message.id)) return;
 
       const entry = await findExecutor(message.guild, AuditLogEvent.MessageDelete, (e) => e.target?.id === client.user.id);
 
-      // 1) Czytelny log (embed) wysłany przez logger.js - odeślij dokładnie ten sam
       const tracked = getTracked(message.id);
       if (tracked) {
         untrack(message.id);
@@ -40,25 +40,24 @@ module.exports = {
           baseEmbed('security', '🚨 PRÓBA USUNIĘCIA LOGU BOTA')
             .setDescription(`Ktoś usunął log bota na kanale ${message.channel}. Ten sam log został wysłany ponownie.`)
             .addFields({ name: 'Usunął', value: executorTag(entry) }),
-          { content: '@everyone', allowedMentions: { parse: ['everyone'] } }
+          EVERYONE_PING
         );
         return;
       }
 
-      // 2) Wiadomość z danymi (config/backup) w kanale-magazynie danych
       const dataMatch = message.content.match(DATA_MARKER_RE);
       if (dataMatch) {
         const [, col] = dataMatch;
         if (col === 'config') {
           const cfg = await storage.getConfig(message.guild.id);
-          await storage.saveConfig(message.guild.id, cfg); // ta sama konfiguracja, zapisana ponownie
+          await storage.saveConfig(message.guild.id, cfg);
           await log(
             message.guild,
             'security',
             baseEmbed('security', '🚨 PRÓBA USUNIĘCIA KONFIGURACJI BOTA')
               .setDescription('Ktoś usunął wiadomość z konfiguracją bota. Zapisano ją ponownie, bez zmian.')
               .addFields({ name: 'Usunął', value: executorTag(entry) }),
-            { content: '@everyone', allowedMentions: { parse: ['everyone'] } }
+            EVERYONE_PING
           );
         } else if (col === 'backups' || col === 'backupmeta') {
           await createBackup(message.guild, 'automatyczne odtworzenie po próbie usunięcia backupu');
@@ -70,18 +69,53 @@ module.exports = {
                 'Ktoś usunął wiadomość z backupem serwera. Dokładnie tej samej wersji nie da się odzyskać (dane fizycznie zniknęły z Discorda), więc od razu utworzono nowy, aktualny backup.'
               )
               .addFields({ name: 'Usunął', value: executorTag(entry) }),
-            { content: '@everyone', allowedMentions: { parse: ['everyone'] } }
+            EVERYONE_PING
           );
         }
         return;
       }
 
-      return; // inna, nieśledzona wiadomość bota - nic nie rób
+      return;
     }
 
-    if (message.author?.bot) return;
+    if (message.author?.bot) {
+      const cfg = await storage.getConfig(message.guild.id);
+      const botEntry = (cfg.protectedBots || []).find((b) => b.botId === message.author.id && b.channelId === message.channelId);
+      if (botEntry) {
+        const cached = protectedBotMessages.get(message.id);
+        protectedBotMessages.untrack(message.id);
+        const entry = await findExecutor(message.guild, AuditLogEvent.MessageDelete, (e) => e.target?.id === message.author.id);
 
-    // ---- zwykły log usuniętej wiadomości użytkownika ----
+        try {
+          const channel =
+            message.guild.channels.cache.get(botEntry.channelId) || (await message.guild.channels.fetch(botEntry.channelId).catch(() => null));
+          if (channel && cached) {
+            const resent = await channel.send({ content: cached.content || undefined, embeds: cached.embeds || [] });
+            protectedBotMessages.track(resent.id, cached);
+          }
+        } catch (err) {
+          console.error('[chron-bota] nie udało się odtworzyć logu:', err.message);
+        }
+
+        await log(
+          message.guild,
+          'security',
+          baseEmbed('security', '🚨 PRÓBA USUNIĘCIA LOGU CHRONIONEGO BOTA')
+            .setDescription(
+              `Ktoś usunął log bota **${botEntry.botTag}** na kanale ${message.channel}.` +
+                (cached ? ' Ten sam log został wysłany ponownie.' : ' Nie udało się odtworzyć treści (bot nie zdążył jej zapisać przed usunięciem).')
+            )
+            .addFields(
+              { name: 'Chroniony bot', value: `<@${botEntry.botId}> (${botEntry.botTag})`, inline: true },
+              { name: 'Usunął', value: executorTag(entry), inline: true }
+            ),
+          EVERYONE_PING
+        );
+        return;
+      }
+      return;
+    }
+
     const entry = await findExecutor(message.guild, AuditLogEvent.MessageDelete, (e) => e.target?.id === message.author?.id);
     const embed = baseEmbed('messages', '🗑️ Usunięto wiadomość')
       .addFields(
