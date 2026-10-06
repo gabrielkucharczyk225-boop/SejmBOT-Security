@@ -5,6 +5,7 @@ const { findExecutor, executorTag } = require('../utils/audit');
 const { consumeExpected } = require('../utils/selfDeleteTracker');
 const { createBackup } = require('../utils/backup');
 const protectedBotMessages = require('../utils/protectedBotMessages');
+const actionLog = require('../utils/actionLog');
 const storage = require('../storage');
 
 const DATA_MARKER_RE = /^#SEJMBOT#([^#\n]+)#([^#\n]+)#/;
@@ -34,6 +35,7 @@ module.exports = {
           console.error('[self-protect] nie udało się odtworzyć logu:', err.message);
         }
 
+        actionLog.record(message.guild.id, 'self_log_protect', `Ktoś usunął log bota na #${message.channel.name} - odesłano ponownie. Usunął: ${entry?.executor?.tag || 'nieznany'}.`);
         await log(
           message.guild,
           'security',
@@ -51,6 +53,7 @@ module.exports = {
         if (col === 'config') {
           const cfg = await storage.getConfig(message.guild.id);
           await storage.saveConfig(message.guild.id, cfg);
+          actionLog.record(message.guild.id, 'self_config_protect', `Ktoś usunął wiadomość z configiem - zapisano ponownie. Usunął: ${entry?.executor?.tag || 'nieznany'}.`);
           await log(
             message.guild,
             'security',
@@ -61,6 +64,7 @@ module.exports = {
           );
         } else if (col === 'backups' || col === 'backupmeta') {
           await createBackup(message.guild, 'automatyczne odtworzenie po próbie usunięcia backupu');
+          actionLog.record(message.guild.id, 'self_backup_protect', `Ktoś usunął wpis backupu - utworzono nowy backup. Usunął: ${entry?.executor?.tag || 'nieznany'}.`);
           await log(
             message.guild,
             'security',
@@ -97,6 +101,11 @@ module.exports = {
           console.error('[chron-bota] nie udało się odtworzyć logu:', err.message);
         }
 
+        actionLog.record(
+          message.guild.id,
+          'protected_bot_log_protect',
+          `Ktoś usunął log chronionego bota ${botEntry.botTag} - ${cached ? 'odesłano ponownie' : 'NIE udało się odtworzyć'}. Usunął: ${entry?.executor?.tag || 'nieznany'}.`
+        );
         await log(
           message.guild,
           'security',
