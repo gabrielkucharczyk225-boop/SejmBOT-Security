@@ -2,6 +2,7 @@ const { ChannelType } = require('discord.js');
 const storage = require('../storage');
 const { log } = require('./logger');
 const { baseEmbed } = require('./embeds');
+const actionLog = require('./actionLog');
 
 async function fetchAsBase64(url) {
   if (!url) return null;
@@ -15,6 +16,8 @@ async function fetchAsBase64(url) {
   }
 }
 
+// Robi pełny zrzut struktury serwera: role, kanały, uprawnienia, ustawienia, emoji, naklejki, role członków,
+// a dodatkowo konfigurację bota i historię jego działań - cały backup to JEDEN samowystarczalny blok danych.
 async function createBackup(guild, reason = 'manual') {
   await guild.fetch();
   const cfg = await storage.getConfig(guild.id);
@@ -23,7 +26,7 @@ async function createBackup(guild, reason = 'manual') {
 
   const roles = [];
   for (const role of guild.roles.cache.sort((a, b) => a.position - b.position).values()) {
-    if (role.managed) continue;
+    if (role.managed) continue; // role botów/integracji - nie da się ich ręcznie odtworzyć
     const iconURL = role.iconURL({ extension: 'png', size: 256 });
     roles.push({
       id: role.id,
@@ -87,6 +90,21 @@ async function createBackup(guild, reason = 'manual') {
     stickers.push({ id: s.id, name: s.name, description: s.description, tags: s.tags, data: await fetchAsBase64(s.url) });
   }
 
+  // Konfiguracja bota (jakie kanały logów/ochrony są ustawione) - czysto informacyjnie,
+  // nie jest automatycznie przywracana przez /restore (to nie wpływa na strukturę serwera).
+  const botConfig = {
+    routes: cfg.routes,
+    protectedChannels: cfg.protectedChannels,
+    protectAllChannels: cfg.protectAllChannels,
+    ignorePrefixes: cfg.ignorePrefixes,
+    linkWhitelist: cfg.linkWhitelist,
+    protectedBots: cfg.protectedBots,
+    furyBlockedBots: cfg.furyBlockedBots,
+  };
+
+  // Historia działań bota na tym serwerze (ostatnie 14 dni) - co bot po drodze zrobił.
+  const actionHistory = actionLog.getRecent(guild.id).map((e) => ({ ts: e.ts, type: e.type, summary: e.summary }));
+
   const snapshot = {
     guild: {
       name: guild.name,
@@ -103,6 +121,8 @@ async function createBackup(guild, reason = 'manual') {
     members,
     emojis,
     stickers,
+    botConfig,
+    actionHistory,
   };
 
   const id = await storage.saveBackup(guild.id, snapshot, {
@@ -110,6 +130,8 @@ async function createBackup(guild, reason = 'manual') {
     guildName: guild.name,
     counts: { roles: roles.length, channels: channels.length, members: members.length, emojis: emojis.length, stickers: stickers.length },
   });
+
+  actionLog.record(guild.id, 'backup_created', `Utworzono backup (powód: ${reason}) - ${roles.length} ról, ${channels.length} kanałów, ${actionHistory.length} wpisów historii dołączonych.`);
 
   const embed = baseEmbed('backup', '💾 Utworzono backup serwera')
     .setDescription(`Powód: **${reason}**\nBaza danych: **${storage.modeFor(guild.id) === 'channel' ? 'kanał Discorda' : storage.modeFor(guild.id) === 'mongo' ? 'MongoDB' : 'pamięć (nietrwałe!)'}**`)
@@ -126,6 +148,7 @@ async function createBackup(guild, reason = 'manual') {
   return id;
 }
 
+// ---------- Debounce - żeby nie robić backupu przy każdej pojedynczej zmianie z osobna ----------
 const { BACKUP } = require('../config');
 const timers = new Map();
 
