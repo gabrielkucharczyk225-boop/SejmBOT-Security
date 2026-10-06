@@ -1,11 +1,11 @@
 const { Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { FORBIDDEN_NAMES, NEW_ACCOUNT_DAYS } = require('../config');
+const { FORBIDDEN_NAMES, NEW_ACCOUNT_DAYS, RAID_JOIN_LIMIT } = require('../config');
 const { log } = require('../utils/logger');
 const { baseEmbed } = require('../utils/embeds');
 const { registerJoin, getRecentJoinCount } = require('../utils/raid');
 const { scoreMember } = require('../utils/multiAccountDetector');
 const recentBans = require('../utils/recentBans');
-const { RAID_JOIN_LIMIT } = require('../config');
+const actionLog = require('../utils/actionLog');
 
 const EVERYONE_PING = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
 
@@ -14,10 +14,12 @@ module.exports = {
   async execute(member) {
     await registerJoin(member.guild);
 
+    // Ochrona nicków
     const username = member.user.username.toLowerCase();
     if (FORBIDDEN_NAMES.some((bad) => username.includes(bad))) {
       try {
         await member.kick('Podejrzany nick (SejmBOT Security)');
+        actionLog.record(member.guild.id, 'kick_forbidden_name', `Wyrzucono ${member.user.tag} (${member.id}) za zakazany nick.`);
         await log(member.guild, 'security', baseEmbed('security', '🚫 Zablokowano podejrzanego użytkownika')
           .setDescription(`${member.user.tag} (\`${member.id}\`) został wyrzucony za podejrzany nick.`));
       } catch (err) {
@@ -26,9 +28,14 @@ module.exports = {
       return;
     }
 
+    // ---- Wynik podejrzenia multikonta ----
     const duringRaid = getRecentJoinCount(member.guild.id) >= Math.max(3, Math.floor(RAID_JOIN_LIMIT / 2));
-    const matchesRecentBan = recentBans.findMatch(member.user);
-    const { score, reasons } = scoreMember(member, { duringRaid, matchesRecentBan });
+    const match = recentBans.findMatch(member.user);
+    const { score, reasons } = scoreMember(member, {
+      duringRaid,
+      matchesRecentBan: match?.username || null,
+      matchesRecentBanBy: match?.by || null,
+    });
 
     const ageDays = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
     const embed = baseEmbed('members', '👤 Nowy użytkownik dołączył')
@@ -45,11 +52,15 @@ module.exports = {
     else if (ageDays < NEW_ACCOUNT_DAYS) embed.setColor(0xf1c40f);
     await log(member.guild, 'members', embed);
 
+    actionLog.record(member.guild.id, 'member_join', `Dołączył ${member.user.tag} (${member.id}) - podejrzenie multikonta: ${score}%.`);
+
+    // ---- Progi działania ----
     if (score < 50) {
-      return;
+      return; // za mało pewności, bot nic nie robi
     }
 
     if (score < 70) {
+      actionLog.record(member.guild.id, 'multiacc_suggest', `${member.user.tag} (${member.id}) - ${score}% - zasugerowano wezwanie do wyjaśnienia.`);
       await log(
         member.guild,
         'security',
@@ -64,6 +75,7 @@ module.exports = {
     }
 
     if (score < 80) {
+      actionLog.record(member.guild.id, 'multiacc_confirm_pending', `${member.user.tag} (${member.id}) - ${score}% - czeka na decyzję moderacji (przyciski).`);
       const confirmEmbed = baseEmbed('security', '🚨 Wysokie podejrzenie multikonta (70-80%)')
         .setDescription(`${member} ma **${score}%** podejrzenia o multikonto.`)
         .addFields({ name: 'Powody', value: reasons.map((r) => `• ${r}`).join('\n') })
@@ -78,8 +90,10 @@ module.exports = {
       return;
     }
 
+    // 80-100%: bot sam nadaje karę (ban)
     try {
       await member.ban({ reason: `SejmBOT Security - automatyczne wykrycie multikonta (${score}%)` });
+      actionLog.record(member.guild.id, 'multiacc_autoban', `Automatycznie zbanowano ${member.user.tag} (${member.id}) - ${score}% pewności.`);
       await log(
         member.guild,
         'security',
