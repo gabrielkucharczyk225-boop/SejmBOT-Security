@@ -4,6 +4,8 @@ const { baseEmbed } = require('../utils/embeds');
 const { findExecutor, executorTag } = require('../utils/audit');
 const { restoreSingleChannel } = require('../utils/restore');
 const { scheduleBackup } = require('../utils/backup');
+const furyMode = require('../utils/furyMode');
+const actionLog = require('../utils/actionLog');
 const storage = require('../storage');
 
 const EVERYONE_PING = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
@@ -22,6 +24,7 @@ module.exports = {
     const botEntry = (cfg.protectedBots || []).find((b) => b.channelId === channel.id);
     const isProtected = !isIgnored && (isLogChannel || cfg.protectAllChannels);
 
+    // Zwykły log usunięcia (zawsze, nawet dla kanałów ignorowanych/niechronionych)
     if (channel.type !== ChannelType.GuildCategory) {
       await log(guild, 'channels', baseEmbed('channels', '🗑️ Usunięto kanał')
         .addFields(
@@ -31,11 +34,18 @@ module.exports = {
         ));
     }
 
+    // Licznik Trybu Furii reaguje na usunięcie DOWOLNEGO kanału (nie tylko chronionego) -
+    // 3 usunięcia pod rząd przez tę samą osobę to podejrzane niezależnie od tego, co usuwa.
+    if (entry?.executor) {
+      await furyMode.registerChannelDeleteAttempt(guild, entry.executor.id, { channels: [channel.name] });
+    }
+
     if (!isProtected) {
       scheduleBackup(guild, `usunięto kanał #${channel.name}`);
       return;
     }
 
+    // KANAŁ CHRONIONY - automatyczne odtworzenie
     let restoredId = null;
     try {
       const restored = await restoreSingleChannel(guild, channel);
@@ -53,6 +63,12 @@ module.exports = {
     } catch (err) {
       console.error('[protection] nie udało się odtworzyć kanału:', err.message);
     }
+
+    actionLog.record(
+      guild.id,
+      'channel_restore',
+      `Kanał #${channel.name} usunięty przez ${entry?.executor?.tag || 'nieznany'} i ${restoredId ? `odtworzony jako <#${restoredId}>` : 'NIE udało się odtworzyć'}.`
+    );
 
     let title;
     if (botEntry) title = '🚨 USUNIĘTO CHRONIONY LOG BOTA';
