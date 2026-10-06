@@ -4,6 +4,7 @@ const { baseEmbed } = require('../utils/embeds');
 const storage = require('../storage');
 const protectedBotMessages = require('../utils/protectedBotMessages');
 const furyMode = require('../utils/furyMode');
+const actionLog = require('../utils/actionLog');
 
 const LINK_EXTRACT_RE = /(https?:\/\/\S+)|(discord\.gg\/\S+)/gi;
 const INVITE_CODE_RE = /(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([\w-]+)/i;
@@ -68,6 +69,7 @@ module.exports = {
 
     try {
       await message.delete();
+      actionLog.record(message.guild.id, 'link_blocked', `Usunięto link od ${message.author.tag} (${message.author.id}) na #${channel.name}.`);
       await log(message.guild, 'security', baseEmbed('security', '🔗 Zablokowano link')
         .setDescription(`Wiadomość od ${message.author} w ${channel} zawierała link i została usunięta.`)
         .addFields({ name: 'Treść', value: content.slice(0, 1000) || '*(puste)*' }));
