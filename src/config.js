@@ -1,4 +1,5 @@
 module.exports = {
+  // --- Anti-raid ---
   RAID_JOIN_LIMIT: 5,
   RAID_WINDOW_MS: 10_000,
   RAID_ALERT_COOLDOWN_MS: 60_000,
@@ -6,18 +7,14 @@ module.exports = {
   LINK_REGEX: /(https?:\/\/\S+)|(discord\.gg\/\S+)/i,
   NEW_ACCOUNT_DAYS: 3,
 
+  // --- Backupy ---
   BACKUP: {
-    DEBOUNCE_MS: 30_000,
-    MEMBER_DEBOUNCE_MS: 5 * 60_000,
-    INTERVAL_MS: 6 * 60 * 60 * 1000,
-    KEEP: 15,
-    CREATE_DELAY_MS: 400,
+    DEBOUNCE_MS: 30_000,              // backup struktury 30s po ostatniej zmianie
+    MEMBER_DEBOUNCE_MS: 5 * 60_000,   // backup ról/nicków członków - 5 min
+    INTERVAL_MS: 60 * 60 * 1000,      // planowy backup co 1h
+    KEEP: 15,                         // ile wersji backupu trzymać
+    CREATE_DELAY_MS: 400,             // odstęp między requestami przy odtwarzaniu (rate limit)
   },
-
-  DANGEROUS_PERMS: [
-    'Administrator', 'ManageGuild', 'ManageRoles', 'ManageChannels',
-    'BanMembers', 'KickMembers', 'MentionEveryone', 'ManageWebhooks',
-  ],
 
   CATEGORIES: [
     { id: 'messages',   emoji: '💬', label: 'Wiadomości',     desc: 'Usunięte/edytowane wiadomości, masowe usuwanie' },
