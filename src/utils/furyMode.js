@@ -1,10 +1,11 @@
 // TRYB FURII - automatyczna reakcja na wzorce przypominające rajd.
-// Aktywuje się sam po 3x próbie usunięcia chronionego kanału (ten sam sprawca, 10 min okno)
+// Aktywuje się sam po 3x próbie usunięcia dowolnego kanału albo roli (ten sam sprawca, 10 min okno)
 // albo po 3x próbie wysłania linku-zaproszenia (ten sam sprawca, 5 min okno).
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const storage = require('../storage');
 const { log } = require('./logger');
 const { baseEmbed } = require('./embeds');
+const actionLog = require('./actionLog');
 
 const FURY_DURATION_MS = 10 * 60 * 1000;
 const CHANNEL_WINDOW_MS = 10 * 60 * 1000;
@@ -74,6 +75,12 @@ async function activate(guild, trigger) {
 
   activeFury.set(guild.id, { expiresAt, timer, blockedBotsOldRoles, prevProtectAll });
 
+  actionLog.record(
+    guild.id,
+    'fury_activate',
+    `Aktywowano Tryb Furii (powód: ${trigger.type}, sprawca: ${trigger.userId}, liczba prób: ${trigger.count}). Zablokowano ${blockedBotsOldRoles.size} bota(ów).`
+  );
+
   await sendFuryAlert(guild, trigger);
 }
 
@@ -96,6 +103,8 @@ async function deactivate(guild, reason = 'ręcznie wyłączony') {
   }
 
   activeFury.delete(guild.id);
+
+  actionLog.record(guild.id, 'fury_deactivate', `Wyłączono Tryb Furii. Powód: ${reason}.`);
 
   await log(
     guild,
@@ -167,17 +176,20 @@ async function applyPunishment(guild, userId, punishment, authorizedBy) {
   try {
     if (punishment === 'ban') {
       await member.ban({ reason });
+      actionLog.record(guild.id, 'fury_punishment', `Zbanowano ${member.user.tag} (${member.id}) - Tryb Furii, zatwierdzone przez ${authorizedBy.tag}.`);
       return { ok: true, message: `Zbanowano ${member.user.tag}.` };
     }
     if (punishment === 'kick') {
       const roleIds = member.roles.cache.filter((r) => r.id !== guild.id).map((r) => r.id);
       if (roleIds.length) await member.roles.remove(roleIds, reason).catch(() => {});
       await member.kick(reason);
+      actionLog.record(guild.id, 'fury_punishment', `Zdjęto role i wyrzucono ${member.user.tag} (${member.id}) - Tryb Furii, zatwierdzone przez ${authorizedBy.tag}.`);
       return { ok: true, message: `Zdjęto role i wyrzucono ${member.user.tag}.` };
     }
     if (punishment === 'roles') {
       const roleIds = member.roles.cache.filter((r) => r.id !== guild.id).map((r) => r.id);
       await member.roles.remove(roleIds, reason).catch(() => {});
+      actionLog.record(guild.id, 'fury_punishment', `Zdjęto wszystkie role ${member.user.tag} (${member.id}) - Tryb Furii, zatwierdzone przez ${authorizedBy.tag}.`);
       return { ok: true, message: `Zdjęto wszystkie role ${member.user.tag}.` };
     }
   } catch (err) {
