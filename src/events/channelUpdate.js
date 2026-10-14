@@ -1,6 +1,6 @@
 const { Events, AuditLogEvent } = require('discord.js');
 const { log } = require('../utils/logger');
-const { baseEmbed } = require('../utils/embeds');
+const { logEmbed, where } = require('../utils/embeds');
 const { findExecutor, executorTag } = require('../utils/audit');
 const { scheduleBackup } = require('../utils/backup');
 
@@ -34,11 +34,18 @@ module.exports = {
     if (!changes.length && !overwriteChanges.length) return;
 
     const entry = await findExecutor(after.guild, AuditLogEvent.ChannelUpdate, (e) => e.target?.id === after.id);
-    const embed = baseEmbed('channels', `📁 Zaktualizowano kanał #${after.name}`)
-      .addFields({ name: 'Zmienił', value: executorTag(entry) });
-    if (changes.length) embed.addFields({ name: 'Zmiany', value: changes.join('\n') });
-    if (overwriteChanges.length) embed.addFields({ name: 'Uprawnienia', value: overwriteChanges.slice(0, 10).join('\n') });
-    await log(after.guild, 'channels', embed);
+    const fields = [];
+    if (changes.length) fields.push({ name: '📝 Zmiany', value: changes.join('\n') });
+    if (overwriteChanges.length) fields.push({ name: '🔐 Uprawnienia', value: overwriteChanges.slice(0, 10).join('\n') });
+
+    await log(after.guild, 'channels', logEmbed({
+      category: 'channels',
+      title: `✏️ Zaktualizowano kanał #${after.name}`,
+      actor: executorTag(entry),
+      channel: where(after),
+      fields,
+      ids: { channel: after.id, user: entry?.executor?.id },
+    }));
     scheduleBackup(after.guild, `edycja kanału #${after.name}`);
   },
 };
