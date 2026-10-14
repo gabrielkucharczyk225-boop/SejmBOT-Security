@@ -16,8 +16,8 @@ async function fetchAsBase64(url) {
   }
 }
 
-// Robi pełny zrzut struktury serwera: role, kanały, uprawnienia, ustawienia, emoji, naklejki, role członków,
-// a dodatkowo konfigurację bota i historię jego działań - cały backup to JEDEN samowystarczalny blok danych.
+// Robi pełny zrzut struktury serwera: role, kanały, uprawnienia, ustawienia, emoji, naklejki, role członków.
+// Ikony/obrazki są osadzane bezpośrednio w snapshotcie (base64) - cały backup to JEDEN samowystarczalny blok danych.
 async function createBackup(guild, reason = 'manual') {
   await guild.fetch();
   const cfg = await storage.getConfig(guild.id);
@@ -49,7 +49,7 @@ async function createBackup(guild, reason = 'manual') {
     return a.rawPosition - b.rawPosition;
   });
   for (const ch of sorted) {
-    if (isIgnoredChannel(ch.name)) continue;
+    if (isIgnoredChannel(ch.name)) continue; // np. kanały "ticket-*" - nie wchodzą do backupu
     channels.push({
       id: ch.id,
       type: ch.type,
