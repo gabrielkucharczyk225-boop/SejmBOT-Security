@@ -6,7 +6,7 @@ module.exports = {
   name: Events.MessageUpdate,
   async execute(before, after) {
     if (!after.guild || after.author?.bot) return;
-    if (before.content === after.content) return;
+    if (before.content === after.content) return; // np. sam embed link preview się zaktualizował
 
     const embed = baseEmbed('messages', '✏️ Edytowano wiadomość')
       .addFields(
