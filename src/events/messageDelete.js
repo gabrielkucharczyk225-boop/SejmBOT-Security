@@ -7,9 +7,9 @@ const { createBackup } = require('../utils/backup');
 const protectedBotMessages = require('../utils/protectedBotMessages');
 const actionLog = require('../utils/actionLog');
 const storage = require('../storage');
+const { ROLE_PING } = require('../utils/ping');
 
 const DATA_MARKER_RE = /^#SEJMBOT#([^#\n]+)#([^#\n]+)#/;
-const EVERYONE_PING = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
 
 module.exports = {
   name: Events.MessageDelete,
@@ -42,7 +42,7 @@ module.exports = {
           baseEmbed('security', '🚨 PRÓBA USUNIĘCIA LOGU BOTA')
             .setDescription(`Ktoś usunął log bota na kanale ${message.channel}. Ten sam log został wysłany ponownie.`)
             .addFields({ name: 'Usunął', value: executorTag(entry) }),
-          EVERYONE_PING
+          ROLE_PING
         );
         return;
       }
@@ -60,7 +60,7 @@ module.exports = {
             baseEmbed('security', '🚨 PRÓBA USUNIĘCIA KONFIGURACJI BOTA')
               .setDescription('Ktoś usunął wiadomość z konfiguracją bota. Zapisano ją ponownie, bez zmian.')
               .addFields({ name: 'Usunął', value: executorTag(entry) }),
-            EVERYONE_PING
+            ROLE_PING
           );
         } else if (col === 'backups' || col === 'backupmeta') {
           await createBackup(message.guild, 'automatyczne odtworzenie po próbie usunięcia backupu');
@@ -73,7 +73,7 @@ module.exports = {
                 'Ktoś usunął wiadomość z backupem serwera. Dokładnie tej samej wersji nie da się odzyskać (dane fizycznie zniknęły z Discorda), więc od razu utworzono nowy, aktualny backup.'
               )
               .addFields({ name: 'Usunął', value: executorTag(entry) }),
-            EVERYONE_PING
+            ROLE_PING
           );
         }
         return;
@@ -118,7 +118,7 @@ module.exports = {
               { name: 'Chroniony bot', value: `<@${botEntry.botId}> (${botEntry.botTag})`, inline: true },
               { name: 'Usunął', value: executorTag(entry), inline: true }
             ),
-          EVERYONE_PING
+          ROLE_PING
         );
         return;
       }
