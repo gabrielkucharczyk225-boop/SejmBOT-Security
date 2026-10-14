@@ -24,6 +24,31 @@ function writeCacheFile(all) {
   } catch (err) { console.error('[cache] zapis nie powiódł się:', err.message); }
 }
 
+// ============ Podpowiedź "gdzie ostatnio był kanał danych" ============
+// Przyspiesza start: zamiast skanować WSZYSTKIE kanały na serwerze szukając przypiętego
+// znacznika, bot najpierw sprawdza TYLKO ten jeden zapamiętany kanał. Jeśli nadal tam jest
+// znacznik (1 zapytanie) - gotowe. Jeśli nie (np. kanał usunięty/odpięty) - wraca do pełnego skanu.
+// To tylko podpowiedź przyspieszająca start, nie źródło prawdy - ginie przy redeployu na Render,
+// ale wtedy bot po prostu zrobi pełny skan jak dotychczas (nic się nie psuje, tylko wolniej).
+const HINT_FILE = path.join(__dirname, '..', 'data', 'data-channel-hints.json');
+function readHints() {
+  try {
+    if (!fs.existsSync(HINT_FILE)) return {};
+    return JSON.parse(fs.readFileSync(HINT_FILE, 'utf8'));
+  } catch { return {}; }
+}
+function getDataChannelHint(guildId) {
+  return readHints()[guildId] || null;
+}
+function setDataChannelHint(guildId, channelId) {
+  try {
+    const all = readHints();
+    all[guildId] = channelId;
+    fs.mkdirSync(path.dirname(HINT_FILE), { recursive: true });
+    fs.writeFileSync(HINT_FILE, JSON.stringify(all, null, 2), 'utf8');
+  } catch (err) { console.error('[hint] zapis nie powiódł się:', err.message); }
+}
+
 // ============ Adapter: pamięć (fallback) ============
 class MemoryAdapter {
   constructor() { this.cols = new Map(); }
@@ -182,6 +207,7 @@ function modeFor(guildId) {
 function attachChannelAdapter(guildId, channelId) {
   if (!discordClient) throw new Error('Klient Discorda nie jest jeszcze gotowy.');
   channelAdapters.set(guildId, new ChannelAdapter(discordClient, channelId));
+  setDataChannelHint(guildId, channelId);
 }
 function detachChannelAdapter(guildId) {
   channelAdapters.delete(guildId);
@@ -216,6 +242,8 @@ async function init() {
 }
 
 // ---------- Konfiguracja serwera ----------
+// Pola opcjonalne (dopisywane przez kolejne funkcje, np. centralForwardTo, lockdown, bannedUsers,
+// lastWeeklyReport, ownerDM) nie są tu wpisane - kod czyta je jako undefined i to jest bezpieczne.
 const defaults = () => ({
   routes: {},
   protectedChannels: [],
@@ -288,5 +316,6 @@ async function loadBackup(id) {
 module.exports = {
   init, setClient, getConfig, saveConfig, saveBackup, listBackups, loadBackup, getStartupSummary,
   attachChannelAdapter, detachChannelAdapter, hasChannelAdapter, modeFor, PIN_MARKER,
+  getDataChannelHint,
   get mode() { return mode; },
 };
