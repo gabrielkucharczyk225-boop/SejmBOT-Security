@@ -37,19 +37,22 @@ module.exports = {
     if (sub === 'list') {
       const backups = await storage.listBackups(interaction.guild.id);
       if (!backups.length) return interaction.reply({ content: 'Brak zapisanych backupów.', ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
       const embed = new EmbedBuilder().setTitle('💾 Backupy serwera').setColor(0xf1c40f).setTimestamp();
-      embed.setDescription(
-        backups
-          .slice(0, 15)
-          .map((b) => {
-            const date = new Date(b.ts).toLocaleString('pl-PL');
-            return `\`${b.id.split(':')[1]}\` — ${date} — ${b.reason}\n↳ role: ${b.counts.roles}, kanały: ${b.counts.channels}, emoji: ${b.counts.emojis}`;
-          })
-          .join('\n\n')
-      );
+      const lines = [];
+      for (const b of backups.slice(0, 15)) {
+        const date = new Date(b.ts).toLocaleString('pl-PL');
+        const snap = await storage.loadBackup(b.id).catch(() => null);
+        const bc = snap?.botConfig;
+        const cfgText = bc
+          ? `ustawienia: ${Object.keys(bc.routes || {}).length} kanałów logów, ${(bc.protectedChannels || []).length} chronionych, ${(bc.linkWhitelist?.channels || []).length} na białej liście`
+          : 'brak ustawień bota';
+        lines.push(`\`${b.id.split(':')[1]}\` — ${date} — ${b.reason}\n↳ role: ${b.counts.roles}, kanały: ${b.counts.channels}, emoji: ${b.counts.emojis}\n↳ ${cfgText}`);
+      }
+      embed.setDescription(lines.join('\n\n'));
       const modeLabel = storage.modeFor(interaction.guild.id) === 'channel' ? 'kanał Discorda (trwałe)' : storage.modeFor(interaction.guild.id) === 'mongo' ? 'MongoDB (trwałe)' : 'PAMIĘĆ (zniknie po restarcie!)';
       embed.setFooter({ text: `Baza danych: ${modeLabel}` });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     if (sub === 'historia') {
