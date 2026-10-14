@@ -1,9 +1,12 @@
 const { Events } = require('discord.js');
-const { isAuthorized } = require('../utils/permissions');
+const { isAuthorized, canApprovePunishment } = require('../utils/permissions');
 const { restoreServer } = require('../utils/restore');
 const { log } = require('../utils/logger');
 const { baseEmbed } = require('../utils/embeds');
 const furyMode = require('../utils/furyMode');
+const { PUNISHMENT_ROLE_ID } = require('../config');
+
+const NO_PUNISHMENT_ROLE_MSG = `❌ Tylko osoba z rolą <@&${PUNISHMENT_ROLE_ID}> może zatwierdzić lub odrzucić tę karę.`;
 
 module.exports = {
   name: Events.InteractionCreate,
@@ -54,47 +57,48 @@ module.exports = {
         return;
       }
 
+      // ---- Wszystkie przyciski związane z KARAMI (ban/kick) - wymagają konkretnej roli ----
       if (interaction.customId.startsWith('fury:punish:')) {
-        if (!isAuthorized(interaction.member)) {
-          return interaction.reply({ content: '❌ Brak uprawnień.', ephemeral: true });
+        if (!canApprovePunishment(interaction.member)) {
+          return interaction.reply({ content: NO_PUNISHMENT_ROLE_MSG, ephemeral: true });
         }
         const parts = interaction.customId.split(':'); // fury, punish, yes|no, userId, [punishment]
         const decision = parts[2];
         const targetUserId = parts[3];
 
         if (decision === 'no') {
-          await interaction.update({ content: '🚫 Odrzucono - SejmBOT Security nie podejmie działań wobec tej osoby.', components: [] });
+          await interaction.update({ content: `🚫 Odrzucono przez ${interaction.user.tag} - SejmBOT Security nie podejmie działań wobec tej osoby.`, components: [] });
           return;
         }
 
         const punishment = parts[4];
-        await interaction.update({ content: '⏳ Wykonuję działania...', components: [] });
+        await interaction.update({ content: `⏳ Zatwierdzone przez ${interaction.user.tag}. Wykonuję działania...`, components: [] });
         const result = await furyMode.applyPunishment(interaction.guild, targetUserId, punishment, interaction.user);
         await interaction.followUp({ content: result.ok ? `✅ ${result.message}` : `❌ ${result.message}`, ephemeral: true });
         return;
       }
 
       if (interaction.customId.startsWith('multiacc:ban:')) {
-        if (!isAuthorized(interaction.member)) {
-          return interaction.reply({ content: '❌ Brak uprawnień.', ephemeral: true });
+        if (!canApprovePunishment(interaction.member)) {
+          return interaction.reply({ content: NO_PUNISHMENT_ROLE_MSG, ephemeral: true });
         }
         const parts = interaction.customId.split(':'); // multiacc, ban, yes|no, userId
         const decision = parts[2];
         const targetUserId = parts[3];
 
         if (decision === 'no') {
-          await interaction.update({ content: '🚫 Odrzucono - SejmBOT Security nie podejmie działań wobec tej osoby.', components: [] });
+          await interaction.update({ content: `🚫 Odrzucono przez ${interaction.user.tag} - SejmBOT Security nie podejmie działań wobec tej osoby.`, components: [] });
           return;
         }
 
-        await interaction.update({ content: '⏳ Banuję...', components: [] });
+        await interaction.update({ content: `⏳ Zatwierdzone przez ${interaction.user.tag}. Banuję...`, components: [] });
         try {
           const member = await interaction.guild.members.fetch(targetUserId).catch(() => null);
           if (!member) {
             await interaction.followUp({ content: '❌ Użytkownik nie jest już na serwerze.', ephemeral: true });
             return;
           }
-          await member.ban({ reason: `SejmBOT Security - potwierdzone multikonto przez ${interaction.user.tag}` });
+          await member.ban({ reason: `SejmBOT Security - potwierdzone przez ${interaction.user.tag}` });
           await interaction.followUp({ content: `✅ Zbanowano ${member.user.tag}.`, ephemeral: true });
         } catch (err) {
           await interaction.followUp({ content: `❌ Nie udało się zbanować: ${err.message}`, ephemeral: true });
