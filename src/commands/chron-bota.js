@@ -5,7 +5,7 @@ const { isAuthorized } = require('../utils/permissions');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('chron-bota')
-    .setDescription('Chroń kanał z logami innego bota - auto-odtwarzanie + alarm z @everyone, jeśli ktoś go usunie')
+    .setDescription('Chroń kanał z logami innego bota - auto-odtwarzanie + alarm z pingiem roli, jeśli ktoś go usunie')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) =>
       s
@@ -40,7 +40,7 @@ module.exports = {
 
       await storage.saveConfig(interaction.guild.id, cfg);
       return interaction.reply({
-        content: `🛡️ Kanał ${channel} jest teraz chroniony jako logi bota **${bot.tag}**. Jeśli ktoś go usunie, bot go odtworzy i wyśle alarm z @everyone, podając kto to zrobił.`,
+        content: `🛡️ Kanał ${channel} jest teraz chroniony jako logi bota **${bot.tag}**. Jeśli ktoś go usunie, bot go odtworzy i wyśle alarm z pingiem roli, podając kto to zrobił.`,
         ephemeral: true,
       });
     }
