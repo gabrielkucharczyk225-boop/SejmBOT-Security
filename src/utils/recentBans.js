@@ -10,15 +10,22 @@ function recordBan(user) {
   if (recent.length > MAX_ENTRIES) recent.length = MAX_ENTRIES;
 }
 
+// Zwraca { username, by: 'avatar'|'username' } dla najlepszego dopasowania, albo null.
+// Dopasowanie po avatarze jest silniejszym sygnałem niż samo po nazwie (nazwy mogą się pokrywać przypadkiem).
 function findMatch(user) {
   const now = Date.now();
+  let usernameMatch = null;
   for (const r of recent) {
     if (now - r.ts > MATCH_WINDOW_MS) continue;
     if (r.userId === user.id) continue;
-    if (r.avatarHash && user.avatar && r.avatarHash === user.avatar) return r.username;
-    if (r.username && r.username === user.username) return r.username;
+    if (r.avatarHash && user.avatar && r.avatarHash === user.avatar) {
+      return { username: r.username, by: 'avatar' };
+    }
+    if (!usernameMatch && r.username && r.username === user.username) {
+      usernameMatch = { username: r.username, by: 'username' };
+    }
   }
-  return null;
+  return usernameMatch;
 }
 
 module.exports = { recordBan, findMatch };
