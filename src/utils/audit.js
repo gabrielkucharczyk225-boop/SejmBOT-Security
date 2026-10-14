@@ -1,5 +1,7 @@
 const { AuditLogEvent } = require('discord.js');
 
+// Szuka najnowszego pasującego wpisu audit logu, żeby ustalić KTO wykonał akcję.
+// filterFn(entry) -> bool. Zwraca wpis albo null.
 async function findExecutor(guild, type, filterFn, maxAgeMs = 15_000) {
   try {
     const logs = await guild.fetchAuditLogs({ type, limit: 5 });
