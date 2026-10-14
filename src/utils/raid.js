@@ -23,6 +23,7 @@ async function registerJoin(guild) {
   }
 }
 
+// Ile dołączeń miało miejsce w ostatnim oknie czasowym (do heurystyki wykrywania multikont).
 function getRecentJoinCount(guildId) {
   const now = Date.now();
   const arr = (joinTimestamps.get(guildId) || []).filter((t) => now - t < RAID_WINDOW_MS);
