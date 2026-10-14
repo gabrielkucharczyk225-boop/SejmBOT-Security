@@ -10,15 +10,18 @@ module.exports = {
     if (!member) return;
 
     if (!before.channel && after.channel) {
-      await log(guild, 'voice', baseEmbed('voice', '🔊 Dołączył do kanału głosowego').setDescription(`${member} → ${after.channel}`));
+      await log(guild, 'voice', baseEmbed('voice', '🔊 Dołączył do kanału głosowego')
+        .setDescription(`${member} → ${after.channel}`));
       return;
     }
     if (before.channel && !after.channel) {
-      await log(guild, 'voice', baseEmbed('voice', '🔇 Opuścił kanał głosowy').setDescription(`${member} wyszedł z ${before.channel}`));
+      await log(guild, 'voice', baseEmbed('voice', '🔇 Opuścił kanał głosowy')
+        .setDescription(`${member} wyszedł z ${before.channel}`));
       return;
     }
     if (before.channelId !== after.channelId) {
-      await log(guild, 'voice', baseEmbed('voice', '🔀 Zmienił kanał głosowy').setDescription(`${member}: ${before.channel} → ${after.channel}`));
+      await log(guild, 'voice', baseEmbed('voice', '🔀 Zmienił kanał głosowy')
+        .setDescription(`${member}: ${before.channel} → ${after.channel}`));
       return;
     }
     const flags = [];
@@ -29,7 +32,8 @@ module.exports = {
     if (before.streaming !== after.streaming) flags.push(`stream: ${after.streaming}`);
     if (before.selfVideo !== after.selfVideo) flags.push(`kamera: ${after.selfVideo}`);
     if (flags.length) {
-      await log(guild, 'voice', baseEmbed('voice', '🎛️ Zmiana stanu głosowego').setDescription(`${member} w ${after.channel}\n${flags.join(', ')}`));
+      await log(guild, 'voice', baseEmbed('voice', '🎛️ Zmiana stanu głosowego')
+        .setDescription(`${member} w ${after.channel}\n${flags.join(', ')}`));
     }
   },
 };
