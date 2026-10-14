@@ -3,6 +3,7 @@ const storage = require('../storage');
 const { createBackup } = require('../utils/backup');
 const { isAuthorized } = require('../utils/permissions');
 const actionLog = require('../utils/actionLog');
+const { restoreBotConfig } = require('../utils/configRestore');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,7 +12,15 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((s) => s.setName('create').setDescription('Utwórz backup serwera teraz'))
     .addSubcommand((s) => s.setName('list').setDescription('Pokaż listę zapisanych backupów'))
-    .addSubcommand((s) => s.setName('historia').setDescription('Pokaż ostatnie działania bota (ochrona, furia, multikonta...)')),
+    .addSubcommand((s) => s.setName('historia').setDescription('Pokaż ostatnie działania bota (ochrona, furia, multikonta...)'))
+    .addSubcommand((s) =>
+      s
+        .setName('przywroc-ustawienia')
+        .setDescription('Przywróć ustawienia bota (kanały logów, ochrony, białą listę) z backupu')
+        .addStringOption((o) =>
+          o.setName('id').setDescription('ID backupu (z /backup list). Puste = najnowszy backup z ustawieniami').setRequired(false)
+        )
+    ),
 
   async execute(interaction) {
     if (!isAuthorized(interaction.member)) {
@@ -52,6 +61,53 @@ module.exports = {
       );
       embed.setFooter({ text: 'Ta sama historia jest też dołączana do każdego backupu serwera.' });
       return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (sub === 'przywroc-ustawienia') {
+      await interaction.deferReply({ ephemeral: true });
+      const idPart = interaction.options.getString('id');
+      const backups = await storage.listBackups(interaction.guild.id);
+
+      let snapshot = null;
+      let usedId = null;
+      let usedTs = null;
+      if (idPart) {
+        const meta = backups.find((b) => b.id.endsWith(':' + idPart) || b.id === idPart);
+        if (!meta) return interaction.editReply('❌ Nie znaleziono backupu o takim ID. Użyj `/backup list`.');
+        snapshot = await storage.loadBackup(meta.id);
+        usedId = meta.id;
+        usedTs = meta.ts;
+      } else {
+        for (const meta of backups) {
+          const s = await storage.loadBackup(meta.id);
+          if (s?.botConfig) {
+            snapshot = s;
+            usedId = meta.id;
+            usedTs = meta.ts;
+            break;
+          }
+        }
+      }
+
+      if (!snapshot) return interaction.editReply('❌ Nie znaleziono backupu z ustawieniami bota.');
+
+      const r = await restoreBotConfig(interaction.guild, snapshot, interaction.user);
+      if (!r.ok) return interaction.editReply(`❌ ${r.message}`);
+
+      const date = new Date(usedTs).toLocaleString('pl-PL');
+      const lostText = r.lost.length
+        ? `\n\n⚠️ Nie udało się dopasować (kanał/rola nie istnieje na serwerze):\n${[...new Set(r.lost)].map((l) => `• ${l}`).join('\n')}\nUstaw je ponownie komendą z /logging albo /whitelist.`
+        : '';
+
+      return interaction.editReply(
+        `✅ Przywrócono ustawienia bota z backupu z **${date}** (\`${usedId.split(':')[1]}\`).\n` +
+          `• Kanały logów: **${r.routes}**\n` +
+          `• Chronione kanały: **${r.protectedChannels}** (tryb „chroń wszystkie”: ${r.protectAll ? 'tak' : 'nie'})\n` +
+          `• Biała lista: **${r.whitelistChannels}** kanałów, **${r.whitelistRoles}** ról\n` +
+          `• Chronione boty: **${r.protectedBots}**\n` +
+          `• Ignorowane prefiksy: ${r.prefixes.map((p) => `\`${p}\``).join(', ') || '*(brak)*'}` +
+          lostText
+      );
     }
   },
 };
