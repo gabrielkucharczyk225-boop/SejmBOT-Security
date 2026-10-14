@@ -1,5 +1,5 @@
 // Rejestr najważniejszych działań bota na danym serwerze (ochrona, furia, multikonta, blokady linków).
-// Trzymany w pamięci, dołączany do każdego backupu (snapshot.actionLog), żeby backup pokazywał
+// Trzymany w pamięci, dołączany do każdego backupu (snapshot.actionHistory), żeby backup pokazywał
 // nie tylko STRUKTURĘ serwera, ale też HISTORIĘ tego, co bot po drodze robił.
 const logs = new Map(); // guildId -> [{ ts, type, summary }]
 const MAX_PER_GUILD = 500;
