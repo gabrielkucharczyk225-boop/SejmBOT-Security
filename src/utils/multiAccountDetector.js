@@ -11,7 +11,7 @@ function scoreMember(member, context = {}) {
   const ageMs = now - member.user.createdTimestamp;
   const ageDays = ageMs / 86_400_000;
 
-  // --- Wiek konta (osobno, łagodniejsze wagi niż poprzednio) ---
+  // --- Wiek konta ---
   if (ageDays < 1) {
     score += 20;
     reasons.push('Konto założone mniej niż 24h temu (+20%)');
@@ -45,8 +45,7 @@ function scoreMember(member, context = {}) {
   }
 
   // --- Nazwa wygląda na losowo wygenerowaną - TYLKO gdy konto jest młode.
-  // Próg 5+ cyfr (nie 4+), bo Discord sam proponuje nazwy typu "slowo1234" (4 cyfry)
-  // przy rejestracji - to normalne u zwykłych, świeżych kont i nie powinno ich obciążać.
+  // Próg 5+ cyfr (nie 4+), bo Discord sam proponuje nazwy typu "slowo1234" przy rejestracji.
   const uname = member.user.username || '';
   const looksRandom = /\d{5,}$/.test(uname) || /^[a-z0-9]{10,}$/i.test(uname.replace(/[_.]/g, ''));
   if (looksRandom && ageDays < 7) {
@@ -60,7 +59,7 @@ function scoreMember(member, context = {}) {
     reasons.push('Dołączył w trakcie fali masowych dołączeń (+15%)');
   }
 
-  // --- Dopasowanie do niedawno zbanowanego konta - najmocniejszy możliwy sygnał ---
+  // --- Dopasowanie do niedawno zbanowanego konta ---
   if (context.matchesRecentBan) {
     if (context.matchesRecentBanBy === 'avatar') {
       score += 45;
