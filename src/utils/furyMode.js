@@ -4,8 +4,11 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const storage = require('../storage');
 const { log } = require('./logger');
-const { baseEmbed } = require('./embeds');
+const { baseEmbed, withIds } = require('./embeds');
 const actionLog = require('./actionLog');
+const { PUNISHMENT_ROLE_ID } = require('../config');
+const { notifyOwner } = require('./ownerNotify');
+const { ROLE_PING } = require('./ping');
 
 const FURY_DURATION_MS = 10 * 60 * 1000;
 const CHANNEL_WINDOW_MS = 10 * 60 * 1000;
@@ -154,19 +157,22 @@ async function sendFuryAlert(guild, trigger) {
   }
 
   const suggestedPunishment = pickPunishment(trigger.type);
-  embed.addFields({ name: 'Sugerowana kara', value: suggestedPunishment === 'ban' ? '🔨 Ban' : '👢 Kick + zdjęcie ról', inline: true });
-  embed.setFooter({ text: 'Czy mam podjąć odpowiednie działania?' });
+  embed.addFields(
+    { name: 'Sugerowana kara', value: suggestedPunishment === 'ban' ? '🔨 Ban' : '👢 Kick + zdjęcie ról', inline: true },
+    { name: 'Kto może zatwierdzić', value: `<@&${PUNISHMENT_ROLE_ID}>`, inline: true }
+  );
+  withIds(embed, { user: trigger.userId });
+  embed.setFooter({ text: `ID użytkownika: ${trigger.userId} • Czy mam podjąć odpowiednie działania?` });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`fury:punish:yes:${trigger.userId}:${suggestedPunishment}`).setLabel('Tak, działaj').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`fury:punish:no:${trigger.userId}`).setLabel('Nie').setStyle(ButtonStyle.Secondary)
   );
 
-  await log(guild, 'security', embed, {
-    content: '@everyone',
-    allowedMentions: { parse: ['everyone'] },
-    components: [row],
-  });
+  await log(guild, 'security', embed, { ...ROLE_PING, components: [row] });
+
+  // Właściciel dostaje podgląd w DM (bez przycisków - decyzję podejmuje osoba z rolą na kanale)
+  await notifyOwner(guild, embed);
 }
 
 async function applyPunishment(guild, userId, punishment, authorizedBy) {
