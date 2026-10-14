@@ -7,7 +7,9 @@ module.exports = {
     .setName('restore')
     .setDescription('Przywróć CAŁY serwer (kanały, role, permisje) z backupu')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption((o) => o.setName('id').setDescription('ID backupu (z /backup list) - puste = najnowszy').setRequired(false)),
+    .addStringOption((o) =>
+      o.setName('id').setDescription('ID backupu (z /backup list) - puste = najnowszy').setRequired(false)
+    ),
 
   async execute(interaction) {
     if (!isAuthorized(interaction.member) || !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -27,7 +29,7 @@ module.exports = {
       .setDescription(
         `Zamierzasz przywrócić serwer z backupu z **${new Date(meta.ts).toLocaleString('pl-PL')}** (${meta.reason}).\n\n` +
           `Bot **utworzy brakujące** kanały, role, permisje, emoji i naklejki tak, by odpowiadały temu backupowi. ` +
-          `Istniejące elementy o tej samej nazwie NIE zostaną usunięte ani zdublowane. Operacja może potrwać kilka minut.`
+          `Istniejące elementy o tej samej nazwie NIE zostaną usunięte ani zdublowane. Operacja może potrwać kilka minut i wysyła wiele requestów do Discorda.`
       )
       .addFields(
         { name: 'Role', value: String(meta.counts.roles), inline: true },
