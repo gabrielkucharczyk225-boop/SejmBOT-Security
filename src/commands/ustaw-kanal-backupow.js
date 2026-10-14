@@ -37,7 +37,7 @@ module.exports = {
       PermissionsBitField.Flags.SendMessages,
       PermissionsBitField.Flags.AttachFiles,
       PermissionsBitField.Flags.ReadMessageHistory,
-      PermissionsBitField.Flags.ManageMessages,
+      PermissionsBitField.Flags.ManageMessages, // potrzebne do pinowania i usuwania starych wersji
     ];
     const missing = required.filter((p) => !perms.has(p));
     if (missing.length) {
