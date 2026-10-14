@@ -3,8 +3,6 @@ const storage = require('../storage');
 const { CATEGORY_LABELS } = require('./embeds');
 const { ROLE_PING } = require('./ping');
 
-// Krótkoterminowa pamięć ostatnio wysłanych logów (embedów) - żeby móc je odesłać ponownie,
-// jeśli ktoś je usunie. Ograniczona do MAX_CACHE wpisów (najstarsze są usuwane).
 const sentLogCache = new Map();
 const MAX_CACHE = 500;
 
@@ -22,7 +20,6 @@ function untrack(messageId) {
   sentLogCache.delete(messageId);
 }
 
-// Kopia logu na kanał centralny (serwer główny). Bez pingów - te zostają na serwerze źródłowym.
 async function forwardToCentral(guild, categoryId, embed, centralChannelId) {
   try {
     const central = await guild.client.channels.fetch(centralChannelId).catch(() => null);
@@ -37,7 +34,6 @@ async function forwardToCentral(guild, categoryId, embed, centralChannelId) {
   }
 }
 
-// Wspólna wysyłka: lokalny kanał kategorii + opcjonalnie kopia na kanał centralny.
 async function deliver(guild, categoryId, embed, extra, forward) {
   let sentLocally = false;
   try {
@@ -61,18 +57,14 @@ async function deliver(guild, categoryId, embed, extra, forward) {
   }
 }
 
-// Standardowy log: lokalnie + kopia na serwer główny (jeśli ten serwer jest podłączony).
 async function log(guild, categoryId, embed, extra = {}) {
   return deliver(guild, categoryId, embed, extra, true);
 }
 
-// Log tylko lokalny - bez kopii na serwer główny (np. błędy operacji na podserwerze).
 async function logLocal(guild, categoryId, embed, extra = {}) {
   return deliver(guild, categoryId, embed, extra, false);
 }
 
-// Udane przywrócenie kanału/roli: trafia na SERWER GŁÓWNY z pingiem roli.
-// Na serwerze głównym (bez podłączenia) - na lokalny kanał Ochrony z pingiem.
 async function logRestoreSuccess(guild, embed) {
   try {
     const cfg = await storage.getConfig(guild.id);
