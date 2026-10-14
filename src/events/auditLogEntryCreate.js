@@ -2,6 +2,7 @@ const { Events, AuditLogEvent } = require('discord.js');
 const { log } = require('../utils/logger');
 const { baseEmbed, trim } = require('../utils/embeds');
 
+// Nazwy akcji po polsku - tylko najważniejsze, reszta wyświetli się jako numer typu.
 const ACTION_NAMES = {
   [AuditLogEvent.GuildUpdate]: 'Aktualizacja serwera',
   [AuditLogEvent.ChannelCreate]: 'Utworzenie kanału',
