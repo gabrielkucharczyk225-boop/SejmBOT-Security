@@ -1,6 +1,6 @@
 const { Events, AuditLogEvent } = require('discord.js');
 const { log, trackSent, getTracked, untrack } = require('../utils/logger');
-const { baseEmbed, trim } = require('../utils/embeds');
+const { baseEmbed, trim, withIds } = require('../utils/embeds');
 const { findExecutor, executorTag } = require('../utils/audit');
 const { consumeExpected } = require('../utils/selfDeleteTracker');
 const { createBackup } = require('../utils/backup');
@@ -125,17 +125,31 @@ module.exports = {
       return;
     }
 
+    // ---- Zwykła wiadomość użytkownika - układ jak w logach Discorda ----
     const entry = await findExecutor(message.guild, AuditLogEvent.MessageDelete, (e) => e.target?.id === message.author?.id);
+    const author = message.author;
+    const now = Math.floor(Date.now() / 1000);
+    const sentAt = message.createdTimestamp ? Math.floor(message.createdTimestamp / 1000) : null;
+
     const embed = baseEmbed('messages', '🗑️ Usunięto wiadomość')
+      .setDescription(
+        `Wiadomość ${author ? `${author}` : '*(nieznany autor)*'} została usunięta na kanale ${message.channel}.`
+      )
+      .setThumbnail(author ? author.displayAvatarURL({ size: 128 }) : null)
       .addFields(
-        { name: 'Autor', value: message.author ? `${message.author} (\`${message.author.id}\`)` : 'Nieznany (spoza cache)', inline: true },
-        { name: 'Kanał', value: `${message.channel}`, inline: true },
-        { name: 'Usunął', value: executorTag(entry), inline: true },
-        { name: 'Treść', value: trim(message.content || '*(brak treści / spoza cache)*') }
+        { name: '👮 Wykonał(a)', value: executorTag(entry), inline: true },
+        { name: '🎯 Dotyczy', value: author ? `${author} (\`${author.id}\`)` : '*(nieznany)*', inline: true },
+        { name: '📁 Kanał', value: `${message.channel}`, inline: true },
+        { name: '📅 Wysłano', value: sentAt ? `<t:${sentAt}:F>` : '*(nieznane)*', inline: true },
+        { name: '💬 Treść', value: trim(message.content || '*(brak treści / spoza cache - np. embed lub załącznik)*') },
+        { name: '🕒 Kiedy', value: `<t:${now}:F> (<t:${now}:R>)`, inline: true }
       );
+
     if (message.attachments?.size) {
-      embed.addFields({ name: 'Załączniki', value: [...message.attachments.values()].map((a) => a.name).join(', ') });
+      embed.addFields({ name: '📎 Załączniki', value: [...message.attachments.values()].map((a) => a.name).join(', ') });
     }
+
+    withIds(embed, { user: author?.id, message: message.id, channel: message.channelId });
     await log(message.guild, 'messages', embed);
   },
 };
