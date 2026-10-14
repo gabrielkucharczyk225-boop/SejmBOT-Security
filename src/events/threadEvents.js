@@ -7,7 +7,8 @@ module.exports = [
     name: Events.ThreadCreate,
     async execute(thread) {
       if (!thread.guild) return;
-      await log(thread.guild, 'channels', baseEmbed('channels', '🧵 Utworzono wątek').setDescription(`${thread} w ${thread.parent || 'nieznanym kanale'}`));
+      await log(thread.guild, 'channels', baseEmbed('channels', '🧵 Utworzono wątek')
+        .setDescription(`${thread} w ${thread.parent || 'nieznanym kanale'}`));
     },
   },
   {
