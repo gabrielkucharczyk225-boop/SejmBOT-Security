@@ -1,7 +1,7 @@
 const { Events, AuditLogEvent, PermissionsBitField } = require('discord.js');
 const { DANGEROUS_PERMS } = require('../config');
 const { log } = require('../utils/logger');
-const { baseEmbed } = require('../utils/embeds');
+const { logEmbed } = require('../utils/embeds');
 const { findExecutor, executorTag } = require('../utils/audit');
 const { scheduleBackup } = require('../utils/backup');
 
@@ -30,17 +30,30 @@ module.exports = {
     if (!changes.length && !addedPerms.length && !removedPerms.length) return;
 
     const entry = await findExecutor(after.guild, AuditLogEvent.RoleUpdate, (e) => e.target?.id === after.id);
-    const embed = baseEmbed('roles', `🎭 Zaktualizowano rolę ${after.name}`).addFields({ name: 'Zmienił', value: executorTag(entry) });
-    if (changes.length) embed.addFields({ name: 'Zmiany', value: changes.join('\n') });
-    if (addedPerms.length) embed.addFields({ name: '➕ Dodane uprawnienia', value: addedPerms.join(', ') });
-    if (removedPerms.length) embed.addFields({ name: '➖ Usunięte uprawnienia', value: removedPerms.join(', ') });
-    await log(after.guild, 'roles', embed);
+    const fields = [];
+    if (changes.length) fields.push({ name: '📝 Zmiany', value: changes.join('\n') });
+    if (addedPerms.length) fields.push({ name: '➕ Dodane uprawnienia', value: addedPerms.join(', ') });
+    if (removedPerms.length) fields.push({ name: '➖ Usunięte uprawnienia', value: removedPerms.join(', ') });
+
+    await log(after.guild, 'roles', logEmbed({
+      category: 'roles',
+      title: `🎭 Zaktualizowano rolę ${after.name}`,
+      actor: executorTag(entry),
+      target: after.name,
+      fields,
+      ids: { role: after.id, user: entry?.executor?.id },
+    }));
 
     const dangerAdded = addedPerms.filter((p) => DANGEROUS_PERMS.includes(p));
     if (dangerAdded.length) {
-      await log(after.guild, 'security', baseEmbed('security', '⚠️ Dodano groźne uprawnienia do roli')
-        .setDescription(`Roli **${after.name}** przyznano: **${dangerAdded.join(', ')}**`)
-        .addFields({ name: 'Wykonał', value: executorTag(entry) }));
+      await log(after.guild, 'security', logEmbed({
+        category: 'security',
+        title: '⚠️ Dodano groźne uprawnienia do roli',
+        description: `Roli **${after.name}** przyznano: **${dangerAdded.join(', ')}**`,
+        actor: executorTag(entry),
+        target: after.name,
+        ids: { role: after.id, user: entry?.executor?.id },
+      }));
     }
 
     scheduleBackup(after.guild, `edycja roli ${after.name}`);
