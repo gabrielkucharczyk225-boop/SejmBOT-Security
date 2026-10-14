@@ -44,7 +44,7 @@ module.exports = {
           botTag: botEntry.botTag,
         });
       }
-      return;
+      return; // boty nie podlegają blokadzie linków
     }
 
     if (message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) return;
@@ -77,6 +77,7 @@ module.exports = {
       console.error('Nie udało się usunąć wiadomości z linkiem:', err.message);
     }
 
+    // Spam linkami-zaproszeniami (ten sam autor, kilka razy) -> wyzwalacz Trybu Furii
     if (isInvite) {
       await furyMode.registerLinkSpamAttempt(message.guild, message.author.id, { exampleLink: links[0] });
     }
