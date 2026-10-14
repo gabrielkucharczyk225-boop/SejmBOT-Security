@@ -7,6 +7,11 @@ module.exports = {
   LINK_REGEX: /(https?:\/\/\S+)|(discord\.gg\/\S+)/i,
   NEW_ACCOUNT_DAYS: 3,
 
+  // Jedyna rola uprawniona do zatwierdzania/odrzucania kar (ban/kick) proponowanych przez bota
+  // (Tryb Furii, wykrywanie multikont itd.) - przyciski Tak/Nie reagują TYLKO na tę rolę.
+  // Ta sama rola jest pingowana we wszystkich alertach zamiast @everyone.
+  PUNISHMENT_ROLE_ID: '1556247938005471253',
+
   // --- Backupy ---
   BACKUP: {
     DEBOUNCE_MS: 30_000,              // backup struktury 30s po ostatniej zmianie
